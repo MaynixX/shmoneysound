@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Pro Harmonic Detector + Player</title>
+    <style>
+        :root { --bg: #0f0f12; --panel: #1a1a20; --accent: #b33939; --accent-glow: #ff5252; --success: #218c53; --success-glow: #2ecc71; --text: #eee; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
+        .container { width: 100%; max-width: 1000px; }
+        
+        .header { text-align: center; margin-bottom: 20px; }
+        .header h2 { color: #fff; margin: 0 0 5px 0; font-size: 26px; }
+        .header p { color: #888; font-size: 13px; margin: 0;}
+
+        /* Стили для выбора проекта */
+        .project-selector { display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 20px; background: var(--panel); padding: 15px; border-radius: 12px; border: 1px solid #333; }
+        .project-selector select { padding: 10px; border-radius: 8px; background: #000; color: #fff; border: 1px solid #444; outline: none; cursor: pointer; font-size: 14px; min-width: 200px;}
+
+        .controls { display: flex; gap: 20px; background: var(--panel); padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #333; align-items: center; justify-content: space-between; flex-wrap: wrap;}
+        .group { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 220px;}
+        label { font-size: 11px; color: #aaa; text-transform: uppercase; font-weight: bold; letter-spacing: 1px; }
+        input[type="range"] { width: 100%; cursor: pointer; accent-color: var(--accent-glow); }
+        .val-display { font-size: 16px; font-weight: bold; color: #fff; font-family: monospace;}
+
+        #startBtn { padding: 15px 30px; font-weight: 900; font-size: 15px; border: none; border-radius: 8px; cursor: pointer; background: var(--success); color: #fff; transition: 0.3s; box-shadow: 0 0 15px rgba(46, 204, 113, 0.2); height: fit-content; text-transform: uppercase;}
+        #startBtn.active { background: var(--accent); box-shadow: 0 0 15px rgba(255, 82, 82, 0.3); }
+
+        .canvas-wrapper { position: relative; background: #000; border-radius: 12px; overflow: hidden; border: 1px solid #333; box-shadow: inset 0 0 40px rgba(0,0,0,0.8); }
+        canvas { display: block; width: 100%; height: 600px; }
+
+        .live-stats { display: flex; justify-content: space-around; background: #000; border-top: 1px solid #333; padding: 10px; font-family: monospace; color: #aaa; font-size: 14px;}
+        .stat-val { color: var(--success-glow); font-weight: bold; font-size: 16px; }
+
+        .display { display: flex; gap: 20px; margin-top: 20px; flex-wrap: wrap; }
+        .status-box { flex: 1; min-width: 200px; background: var(--panel); padding: 20px; border-radius: 12px; border-left: 6px solid #444; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: 0.2s;}
+        .log-box { flex: 1.5; min-width: 300px; background: var(--panel); padding: 15px; border-radius: 12px; font-family: 'Consolas', monospace; font-size: 13px; color: #888; height: 130px; overflow-y: auto; border: 1px solid #333;}
+        
+        #status { font-size: 2.5rem; font-weight: 900; color: #666; text-align: center; text-transform: uppercase;}
+        #substatus { font-size: 1rem; color: #888; margin-top: 5px; }
+
+        /* Стили плейлиста */
+        .playlist-wrapper { width: 100%; background: var(--panel); border: 1px solid #333; border-radius: 12px; margin-top: 20px; padding: 15px; box-sizing: border-box;}
+        .playlist-wrapper h3 { margin: 0 0 10px 0; font-size: 14px; color: #aaa; text-transform: uppercase;}
+        #trackList { list-style: none; padding: 0; margin: 0; display: flex; gap: 10px; flex-wrap: wrap;}
+        #trackList li { background: #000; padding: 8px 15px; border-radius: 6px; border: 1px solid #333; font-size: 13px; color: #888; transition: 0.2s;}
+        #trackList li.active { background: rgba(46, 204, 113, 0.15); border-color: var(--success); color: #fff; font-weight: bold; box-shadow: 0 0 10px rgba(46, 204, 113, 0.2);}
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h2>Строгий Детектор + Плеер</h2>
+        <p>Клик — следующий трек | Удержание (>2.5с) — назад на 15 сек</p>
+    </div>
+
+    <div class="project-selector">
+        <label for="projectSelect">Проект:</label>
+        <select id="projectSelect">
+            <option value="">-- Выберите папку --</option>
+            <option value="math">Math</option>
+            <option value="him">Him</option>
+        </select>
+    </div>
+
+    <div class="controls">
+        <button id="startBtn">Включить микрофон</button>
+        
+        <div class="group" title="Минимальная абсолютная громкость для срабатывания">
+            <label>Базовый порог: <span id="thrVal" class="val-display">80</span></label>
+            <input type="range" id="threshSlider" min="10" max="200" value="80">
+        </div>
+        
+        <div class="group" title="На сколько % пик должен быть громче ЛЮБОГО соседнего звука">
+            <label>Превышение над макс. шумом: <span id="promVal" class="val-display">25</span>%</label>
+            <input type="range" id="promSlider" min="5" max="100" value="25" step="5">
+        </div>
+    </div>
+
+    <div class="canvas-wrapper">
+        <canvas id="viz"></canvas>
+        <div class="live-stats">
+            <div>Совпадений пиков: <span class="stat-val" id="matchCount">0 / 9</span></div>
+            <div>Статус: <span class="stat-val" id="patternStatus" style="color: #666;">НЕ НАЙДЕН</span></div>
+        </div>
+    </div>
+
+    <div class="display">
+        <div class="status-box" id="statusBox">
+            <div id="status">ТИШИНА</div>
+            <div id="substatus">Ожидание...</div>
+        </div>
+        <div class="log-box" id="log"></div>
+    </div>
+
+    <div class="playlist-wrapper">
+        <h3>Файлы проекта:</h3>
+        <ul id="trackList">
+            <li style="border: none; background: transparent;">Проект не выбран</li>
+        </ul>
+    </div>
+</div>
+
+<script>
+    // --- НАСТРОЙКИ ПАПОК И ФАЙЛОВ ---
+    // Так как JS в браузере не видит файлы на сервере, 
+    // укажите здесь, сколько файлов (1.mp3, 2.mp3 и тд) лежит в каждой папке.
+    const projectsDb = {
+        'math': 4, // Значит там лежат: 1.mp3, 2.mp3, 3.mp3, 4.mp3
+        'him': 4
+    };
+
+    // --- ПЛЕЕР И СОСТОЯНИЕ ---
+    const audioPlayer = new Audio();
+    let currentPlaylist = [];
+    let currentTrackIndex = -1; // -1 значит ничего еще не играет
+
+    const projectSelect = document.getElementById('projectSelect');
+    const trackListEl = document.getElementById('trackList');
+
+    // Загрузка проекта
+    function loadProject(projectName) {
+        if (!projectsDb[projectName]) return;
+        
+        projectSelect.value = projectName;
+        window.location.hash = projectName; // Добавляем #имя в URL
+        
+        currentPlaylist = [];
+        currentTrackIndex = -1;
+        trackListEl.innerHTML = ''; // Очищаем старый список
+        
+        // Генерируем пути
+        const count = projectsDb[projectName];
+        for(let i = 1; i <= count; i++) {
+            const url = `file:///C:/Users/Maynix/Desktop/click/projects/${projectName}/${i}.mp3`;
+            currentPlaylist.push(url);
+            
+            const li = document.createElement('li');
+            li.textContent = `${i}.mp3`;
+            li.id = `track-${i-1}`;
+            trackListEl.appendChild(li);
+        }
+        addLog(`Загружен проект: ${projectName} (${count} файлов)`);
+    }
+
+    // Слушатель изменения в селекте
+    projectSelect.addEventListener('change', (e) => {
+        if (e.target.value) loadProject(e.target.value);
+    });
+
+    // Проверка URL при загрузке страницы (остается при перезагрузке)
+    window.addEventListener('DOMContentLoaded', () => {
+        if (window.location.hash) {
+            const hashVal = window.location.hash.substring(1); // убираем символ #
+            if (projectsDb[hashVal]) {
+                loadProject(hashVal);
+            }
+        }
+    });
+
+    // Логика переключения треков
+    function playNextTrack() {
+        if (currentPlaylist.length === 0) {
+            addLog("Внимание: Проект не выбран!");
+            return;
+        }
+
+        // Двигаем индекс (возвращается к 0, если дошли до конца)
+        currentTrackIndex = (currentTrackIndex + 1) % currentPlaylist.length;
+        
+        audioPlayer.src = currentPlaylist[currentTrackIndex];
+        audioPlayer.play().catch(e => addLog("Ошибка аудио: " + e.message));
+
+        // Обновляем визуальное отображение плейлиста
+        document.querySelectorAll('#trackList li').forEach(li => li.classList.remove('active'));
+        const activeLi = document.getElementById(`track-${currentTrackIndex}`);
+        if (activeLi) activeLi.classList.add('active');
+
+        addLog(`Воспроизведение: ${currentPlaylist[currentTrackIndex]}`);
+    }
+
+    // Логика отмотки назад
+    function rewindAudio() {
+        if (!audioPlayer.src || audioPlayer.paused) {
+            addLog("Нет активного трека для перемотки.");
+            return;
+        }
+        // Отматываем на 15 секунд (не меньше нуля)
+        audioPlayer.currentTime = Math.max(0, audioPlayer.currentTime - 15);
+        addLog(`Отмотка -15с. Текущее время: ${audioPlayer.currentTime.toFixed(1)}с`);
+    }
+
+    // --- ОСТАЛЬНОЙ КОД АНАЛИЗАТОРА ---
+    const canvas = document.getElementById('viz');
+    const ctx = canvas.getContext('2d');
+    const btn = document.getElementById('startBtn');
+    const statusEl = document.getElementById('status');
+    const substatusEl = document.getElementById('substatus');
+    const statusBox = document.getElementById('statusBox');
+    const logEl = document.getElementById('log');
+    
+    const threshSlider = document.getElementById('threshSlider');
+    const promSlider = document.getElementById('promSlider');
+    const thrValText = document.getElementById('thrVal');
+    const promValText = document.getElementById('promVal');
+    
+    const matchCountText = document.getElementById('matchCount');
+    const patternStatusText = document.getElementById('patternStatus');
+
+    const BASE_FREQ = 694.4;
+    const HARMONICS = [
+        BASE_FREQ, BASE_FREQ * 2, BASE_FREQ * 3, BASE_FREQ * 4, 
+        BASE_FREQ * 5, BASE_FREQ * 6, BASE_FREQ * 7, BASE_FREQ * 8, BASE_FREQ * 9
+    ];
+    
+    const TOL_INNER = 40;  
+    const TOL_OUTER = 100; 
+    const MIN_MATCHES = 3; 
+
+    let audioCtx, analyser, dataArray;
+    let isRunning = false, sigActive = false;
+    let sigStart = 0, count = 0, timer = null;
+    let lastSeen = 0, graceTimer = null; 
+
+    threshSlider.oninput = (e) => thrValText.textContent = e.target.value;
+    promSlider.oninput = (e) => promValText.textContent = e.target.value;
+
+    function resize() {
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = canvas.clientWidth * dpr;
+        canvas.height = canvas.clientHeight * dpr;
+        ctx.scale(dpr, dpr);
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    btn.onclick = async () => {
+        if (isRunning) return;
+        try {
+            // ВАЖНО ДЛЯ IPHONE: "Прогреваем" аудиоплеер в момент клика пользователя
+            audioPlayer.play().catch(()=>{}); 
+            audioPlayer.pause(); 
+
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 8192; 
+            analyser.smoothingTimeConstant = 0.75; 
+            const source = audioCtx.createMediaStreamSource(stream);
+            source.connect(analyser);
+            dataArray = new Uint8Array(analyser.frequencyBinCount);
+            
+            btn.textContent = "РАБОТАЕТ (МИКРОФОН ВЛК)";
+            btn.classList.add('active');
+            isRunning = true;
+            addLog("Запущено. Детектор готов.");
+        } catch (e) { alert("Ошибка микрофона: " + e.message); }
+    };
+
+    function addLog(msg) {
+        const time = new Date().toLocaleTimeString('ru-RU');
+        logEl.innerHTML = `[${time}] ${msg}<br>` + logEl.innerHTML;
+    }
+
+    // --- ОБНОВЛЕННАЯ ЛОГИКА СИГНАЛОВ ---
+    function handleSignal(ms) {
+        if (ms > 2500) {
+            // УДЕРЖАНИЕ (перемотка назад)
+            const s = (ms/1000).toFixed(1);
+            statusEl.textContent = `УДЕРЖАНИЕ`;
+            substatusEl.textContent = `${s} сек.`;
+            statusEl.style.color = 'var(--accent-glow)';
+            statusBox.style.borderLeftColor = 'var(--accent-glow)';
+            
+            addLog(`Длинный сигнал: ${s} сек. -> ПЕРЕМОТКА`);
+            rewindAudio(); // Вызываем перемотку
+            
+            count = 0;
+        } else {
+            // КЛИК (следующий трек)
+            count++;
+            statusEl.textContent = `КЛИК`;
+            substatusEl.textContent = `В серии: ${count}`;
+            statusEl.style.color = 'var(--success-glow)';
+            statusBox.style.borderLeftColor = 'var(--success-glow)';
+            
+            addLog(`Зафиксирован клик -> СЛЕДУЮЩИЙ ТРЕК`);
+            playNextTrack(); // Включаем следующий трек
+            
+            clearTimeout(timer);
+            timer = setTimeout(() => {
+                statusEl.textContent = "ТИШИНА";
+                substatusEl.textContent = `Ожидание...`;
+                statusEl.style.color = '#666';
+                statusBox.style.borderLeftColor = '#444';
+                count = 0;
+            }, 2500); 
+        }
+    }
+
+    function render() {
+        requestAnimationFrame(render);
+        
+        const now = Date.now(); 
+        const W = canvas.clientWidth, H = canvas.clientHeight;
+        const rate = audioCtx ? audioCtx.sampleRate : 44100;
+        const maxDrawFreq = 8000; 
+        
+        const threshold = parseInt(threshSlider.value);
+        const prominenceRatio = 1 + (parseInt(promSlider.value) / 100); 
+        
+        ctx.clearRect(0, 0, W, H);
+        const freqToX = (f) => (f / maxDrawFreq) * W;
+        const valToY = (val) => H - (val / 255) * H;
+
+        HARMONICS.forEach(freq => {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.fillRect(freqToX(freq - TOL_OUTER), 0, freqToX(freq + TOL_OUTER) - freqToX(freq - TOL_OUTER), H);
+            
+            ctx.fillStyle = 'rgba(0, 229, 255, 0.05)';
+            ctx.fillRect(freqToX(freq - TOL_INNER), 0, freqToX(freq + TOL_INNER) - freqToX(freq - TOL_INNER), H);
+            
+            ctx.beginPath(); ctx.moveTo(freqToX(freq), 0); ctx.lineTo(freqToX(freq), H);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'; ctx.setLineDash([2, 4]); ctx.stroke(); ctx.setLineDash([]);
+        });
+
+        ctx.beginPath(); ctx.moveTo(0, valToY(threshold)); ctx.lineTo(W, valToY(threshold));
+        ctx.strokeStyle = 'rgba(255, 82, 82, 0.3)'; ctx.stroke();
+
+        if (isRunning && dataArray) {
+            analyser.getByteFrequencyData(dataArray);
+            const hzPerBin = rate / (dataArray.length * 2);
+
+            let hStats = HARMONICS.map(() => ({ peakMax: 0, noiseMax: 0 }));
+
+            ctx.beginPath(); ctx.moveTo(0, H);
+
+            for (let i = 0; i < dataArray.length; i++) {
+                const val = dataArray[i];
+                const f = i * hzPerBin;
+                if (f > maxDrawFreq) break; 
+
+                ctx.lineTo(freqToX(f), valToY(val));
+
+                for (let j = 0; j < HARMONICS.length; j++) {
+                    const hF = HARMONICS[j];
+                    if (f >= hF - TOL_OUTER && f <= hF + TOL_OUTER) {
+                        if (f >= hF - TOL_INNER && f <= hF + TOL_INNER) {
+                            if (val > hStats[j].peakMax) hStats[j].peakMax = val;
+                        } else {
+                            if (val > hStats[j].noiseMax) hStats[j].noiseMax = val;
+                        }
+                        break;
+                    }
+                }
+            }
+            ctx.lineTo(W, H); ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 2; ctx.stroke();
+
+            let activeHits = 0;
+
+            for (let j = 0; j < HARMONICS.length; j++) {
+                const stat = hStats[j];
+                const isLoudEnough = stat.peakMax > threshold;
+                const isProminent = stat.peakMax > (stat.noiseMax * prominenceRatio);
+
+                if (isLoudEnough && isProminent) {
+                    activeHits++;
+                    ctx.fillStyle = 'rgba(255, 82, 82, 0.25)';
+                    ctx.fillRect(freqToX(HARMONICS[j] - TOL_INNER), 0, freqToX(HARMONICS[j] + TOL_INNER) - freqToX(HARMONICS[j] - TOL_INNER), H);
+                }
+                
+                ctx.beginPath();
+                ctx.moveTo(freqToX(HARMONICS[j] - TOL_OUTER), valToY(stat.noiseMax));
+                ctx.lineTo(freqToX(HARMONICS[j] + TOL_OUTER), valToY(stat.noiseMax));
+                ctx.strokeStyle = '#f39c12'; ctx.lineWidth = 1; ctx.stroke();
+            }
+
+            matchCountText.textContent = `${activeHits} / ${HARMONICS.length}`;
+            const isPatternMatched = activeHits >= MIN_MATCHES;
+
+            if (isPatternMatched) {
+                if (!sigActive) { 
+                    sigActive = true; 
+                    sigStart = now; 
+                }
+                lastSeen = now; 
+
+                if (graceTimer) {
+                    clearTimeout(graceTimer);
+                    graceTimer = null;
+                }
+            } else {
+                if (sigActive && !graceTimer) {
+                    graceTimer = setTimeout(() => {
+                        const dur = lastSeen - sigStart; 
+                        
+                        if (dur >= 10) {
+                            handleSignal(dur); 
+                        }
+                        
+                        sigActive = false;
+                        graceTimer = null;
+                    }, 100); 
+                }
+            }
+        }
+
+        ctx.fillStyle = '#666'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+        for (let f = 1000; f <= maxDrawFreq; f += 1000) {
+            const x = freqToX(f);
+            ctx.fillText((f/1000) + 'k', x, H - 10);
+            ctx.fillStyle = '#333'; ctx.fillRect(x, 0, 1, H); ctx.fillStyle = '#666';
+        }
+    }
+    render();
+</script>
+</body>
+</html>

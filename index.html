@@ -276,7 +276,7 @@
     function handleSignal(ms) {
         if (uiResetTimer) clearTimeout(uiResetTimer);
 
-        if (ms >= 2500) {
+        if (ms >= 2000) {
             // УДЕРЖАНИЕ (>= 2.5с)
             const s = (ms/1000).toFixed(1);
             statusEl.textContent = `УДЕРЖАНИЕ`;

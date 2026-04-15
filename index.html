@@ -151,24 +151,38 @@
 
     // Логика прыжка на следующий сегмент
     function playNextTrack() {
-        if (segments.length === 0) {
-            addLog("Внимание: Проект не загружен!");
-            return;
-        }
-
-        currentSegmentIndex++;
-        if (currentSegmentIndex >= segments.length) currentSegmentIndex = 0;
-
-        const targetTime = segments[currentSegmentIndex].start;
-        audioPlayer.currentTime = targetTime;
-        audioPlayer.play().catch(e => addLog("Ошибка Apple Audio: " + e.message));
-
-        // UI
-        document.querySelectorAll('#trackList li').forEach(li => li.classList.remove('active'));
-        document.getElementById(`track-${currentSegmentIndex}`).classList.add('active');
-        
-        addLog(`Переход к: ${segments[currentSegmentIndex].name} (${targetTime}s)`);
+    if (segments.length === 0) {
+        addLog("Внимание: Проект не загружен!");
+        return;
     }
+
+    const currentTime = audioPlayer.currentTime;
+    
+    // Находим индекс сегмента, который идет сразу после текущего времени
+    let nextIndex = segments.findIndex(seg => seg.start > currentTime + 0.5);
+
+    // Если мы в самом конце или ничего не нашли — идем на начало (0)
+    if (nextIndex === -1) {
+        nextIndex = 0;
+    }
+
+    currentSegmentIndex = nextIndex;
+    const targetTime = segments[currentSegmentIndex].start;
+    
+    audioPlayer.currentTime = targetTime;
+    audioPlayer.play().catch(e => addLog("Ошибка Audio: " + e.message));
+
+    // Обновление UI
+    updatePlaylistUI();
+    addLog(`Переход к: ${segments[currentSegmentIndex].name} (${targetTime}s)`);
+}
+
+// Вынесем обновление UI в отдельную функцию для чистоты
+function updatePlaylistUI() {
+    document.querySelectorAll('#trackList li').forEach(li => li.classList.remove('active'));
+    const activeLi = document.getElementById(`track-${currentSegmentIndex}`);
+    if (activeLi) activeLi.classList.add('active');
+}
 
     function rewindAudio() {
         if (audioPlayer.paused && audioPlayer.currentTime === 0) return;

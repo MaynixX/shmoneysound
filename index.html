@@ -339,16 +339,16 @@
                 uiResetTimer = setTimeout(resetUI, 2500);
             } else {
                 // ОДИНОЧНЫЙ КЛИК (ждем 2 секунды возможного второго клика)
-                substatusEl.textContent = `Ожидание 2-го клика (до 2с)...`;
+                // substatusEl.textContent = `Ожидание 2-го клика (до 2с)...`;
                 
-                clickActionTimer = setTimeout(() => {
-                    if (clickCount === 1) {
-                        substatusEl.textContent = `Один клик -> Старт / Пауза`;
-                        togglePlayPause();
-                    }
-                    clickCount = 0;
-                    uiResetTimer = setTimeout(resetUI, 2500);
-                }, 1000); 
+                // clickActionTimer = setTimeout(() => {
+                //     if (clickCount === 1) {
+                //         substatusEl.textContent = `Один клик -> Старт / Пауза`;
+                //         togglePlayPause();
+                //     }
+                //     clickCount = 0;
+                //     uiResetTimer = setTimeout(resetUI, 2500);
+                // }, 1000); 
             }
         }
     }

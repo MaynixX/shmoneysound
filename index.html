@@ -35,7 +35,7 @@
         .log-box { flex: 1.5; min-width: 300px; background: var(--panel); padding: 15px; border-radius: 12px; font-family: 'Consolas', monospace; font-size: 13px; color: #888; height: 130px; overflow-y: auto; border: 1px solid #333;}
         
         #status { font-size: 2.5rem; font-weight: 900; color: #666; text-align: center; text-transform: uppercase;}
-        #substatus { font-size: 1rem; color: #888; margin-top: 5px; }
+        #substatus { font-size: 1rem; color: #888; margin-top: 5px; text-align: center; }
 
         .playlist-wrapper { width: 100%; background: var(--panel); border: 1px solid #333; border-radius: 12px; margin-top: 20px; padding: 15px; box-sizing: border-box;}
         .playlist-wrapper h3 { margin: 0 0 10px 0; font-size: 14px; color: #aaa; text-transform: uppercase;}
@@ -49,7 +49,7 @@
 <div class="container">
     <div class="header">
         <h2>Строгий Детектор + Плеер</h2>
-        <p>Клик — следующий трек | Удержание (>2.5с) — назад на 15 сек</p>
+        <p>1 клик — пауза/старт | 2 клика — следующий трек | Удержание (>2.5с) — назад на 15 сек</p>
     </div>
 
     <div class="project-selector">
@@ -106,107 +106,113 @@
     const projectSelect = document.getElementById('projectSelect');
     const trackListEl = document.getElementById('trackList');
 
-    // Помощник для парсинга времени 02:35 -> секунды
-    // Улучшенный парсер: понимает и "00:00 - имя", и "имя - 00:00"
-function parseTimeToSeconds(timeStr) {
-    if (!timeStr) return 0;
-    const p = timeStr.trim().split(':').map(Number);
-    if (p.some(isNaN)) return NaN; // Если это не время
-    return p.length === 2 ? p[0] * 60 + p[1] : p[0] * 3600 + p[1] * 60 + p[2];
-}
-
-async function loadProject(projectName) {
-    if (!projectName) return;
-    
-    try {
-        const response = await fetch(`/projects/${projectName}/info.txt`);
-        const text = await response.text();
-        
-        segments = text.split('\n')
-            .map(line => line.trim())
-            .filter(line => line.includes(' - '))
-            .map(line => {
-                const parts = line.split(' - ');
-                let name, time;
-                
-                // Проверяем, в какой части находится время (содержит двоеточие)
-                if (parts[0].includes(':')) {
-                    time = parseTimeToSeconds(parts[0]);
-                    name = parts[1];
-                } else {
-                    name = parts[0];
-                    time = parseTimeToSeconds(parts[1]);
-                }
-                
-                return { name: name.trim(), start: time };
-            })
-            // Исключаем битые строки и сортируем по времени на всякий случай
-            .filter(s => !isNaN(s.start))
-            .sort((a, b) => a.start - b.start);
-
-        if (segments.length === 0) {
-            addLog("Ошибка: Не удалось распарсить info.txt. Проверь формат.");
-            return;
-        }
-
-        trackListEl.innerHTML = '';
-        segments.forEach((seg, i) => {
-            const li = document.createElement('li');
-            li.textContent = seg.name;
-            li.id = `track-${i}`;
-            trackListEl.appendChild(li);
-        });
-
-        audioPlayer.src = `/projects/${projectName}/track.mp3`;
-        audioPlayer.load();
-        currentSegmentIndex = -1;
-        
-        addLog(`Загружен: ${projectName}. Найдено меток: ${segments.length}`);
-        window.location.hash = projectName;
-    } catch (e) {
-        addLog("Ошибка загрузки: " + e.message);
+    function parseTimeToSeconds(timeStr) {
+        if (!timeStr) return 0;
+        const p = timeStr.trim().split(':').map(Number);
+        if (p.some(isNaN)) return NaN; 
+        return p.length === 2 ? p[0] * 60 + p[1] : p[0] * 3600 + p[1] * 60 + p[2];
     }
-}
+
+    async function loadProject(projectName) {
+        if (!projectName) return;
+        
+        try {
+            const response = await fetch(`/projects/${projectName}/info.txt`);
+            const text = await response.text();
+            
+            segments = text.split('\n')
+                .map(line => line.trim())
+                .filter(line => line.includes(' - '))
+                .map(line => {
+                    const parts = line.split(' - ');
+                    let name, time;
+                    
+                    if (parts[0].includes(':')) {
+                        time = parseTimeToSeconds(parts[0]);
+                        name = parts[1];
+                    } else {
+                        name = parts[0];
+                        time = parseTimeToSeconds(parts[1]);
+                    }
+                    
+                    return { name: name.trim(), start: time };
+                })
+                .filter(s => !isNaN(s.start))
+                .sort((a, b) => a.start - b.start);
+
+            if (segments.length === 0) {
+                addLog("Ошибка: Не удалось распарсить info.txt. Проверь формат.");
+                return;
+            }
+
+            trackListEl.innerHTML = '';
+            segments.forEach((seg, i) => {
+                const li = document.createElement('li');
+                li.textContent = seg.name;
+                li.id = `track-${i}`;
+                trackListEl.appendChild(li);
+            });
+
+            audioPlayer.src = `/projects/${projectName}/track.mp3`;
+            audioPlayer.load();
+            currentSegmentIndex = -1;
+            
+            addLog(`Загружен: ${projectName}. Найдено меток: ${segments.length}`);
+            window.location.hash = projectName;
+        } catch (e) {
+            addLog("Ошибка загрузки: " + e.message);
+        }
+    }
 
     projectSelect.addEventListener('change', (e) => loadProject(e.target.value));
 
-    // Логика прыжка на следующий сегмент
-    function playNextTrack() {
-    if (segments.length === 0) return;
-
-    const currentTime = audioPlayer.currentTime;
-    
-    // Если плеер на самом начале и еще не запущен (или в пределах 1-й секунды)
-    // и мы еще ничего не выбирали (currentSegmentIndex === -1), 
-    // то просто включаем первый трек.
-    if (currentTime < 1 && currentSegmentIndex === -1) {
-        currentSegmentIndex = 0;
-    } else {
-        // Иначе ищем следующий сегмент
-        let nextIndex = segments.findIndex(seg => seg.start > (currentTime + 1.5));
-
-        if (nextIndex === -1) {
-            nextIndex = 0; // Зацикливаем на начало
+    function togglePlayPause() {
+        if (!audioPlayer.src) return;
+        
+        if (audioPlayer.paused) {
+            // Если трек не был запущен, выбираем первый
+            if (currentSegmentIndex === -1 && segments.length > 0) {
+                currentSegmentIndex = 0;
+                audioPlayer.currentTime = segments[0].start;
+                updatePlaylistUI();
+            }
+            audioPlayer.play().catch(e => console.log("Ждем взаимодействия: " + e.message));
+            addLog("▶ Воспроизведение (Один клик)");
+        } else {
+            audioPlayer.pause();
+            addLog("⏸ Пауза (Один клик)");
         }
-        currentSegmentIndex = nextIndex;
     }
 
-    const targetTime = segments[currentSegmentIndex].start;
-    audioPlayer.currentTime = targetTime;
-    
-    // Важно: играем только после того, как установили время
-    audioPlayer.play().catch(e => console.log("Ждем взаимодействия: " + e.message));
+    function playNextTrack() {
+        if (segments.length === 0) return;
 
-    updatePlaylistUI();
-    addLog(`Переход к: ${segments[currentSegmentIndex].name} (${targetTime}s)`);
-}
+        const currentTime = audioPlayer.currentTime;
+        
+        if (currentTime < 1 && currentSegmentIndex === -1) {
+            currentSegmentIndex = 0;
+        } else {
+            let nextIndex = segments.findIndex(seg => seg.start > (currentTime + 1.5));
+            if (nextIndex === -1) {
+                nextIndex = 0; 
+            }
+            currentSegmentIndex = nextIndex;
+        }
 
-// Вынесем обновление UI в отдельную функцию для чистоты
-function updatePlaylistUI() {
-    document.querySelectorAll('#trackList li').forEach(li => li.classList.remove('active'));
-    const activeLi = document.getElementById(`track-${currentSegmentIndex}`);
-    if (activeLi) activeLi.classList.add('active');
-}
+        const targetTime = segments[currentSegmentIndex].start;
+        audioPlayer.currentTime = targetTime;
+        
+        audioPlayer.play().catch(e => console.log("Ждем взаимодействия: " + e.message));
+
+        updatePlaylistUI();
+        addLog(`Переход к: ${segments[currentSegmentIndex].name} (${targetTime}s)`);
+    }
+
+    function updatePlaylistUI() {
+        document.querySelectorAll('#trackList li').forEach(li => li.classList.remove('active'));
+        const activeLi = document.getElementById(`track-${currentSegmentIndex}`);
+        if (activeLi) activeLi.classList.add('active');
+    }
 
     function rewindAudio() {
         if (audioPlayer.paused && audioPlayer.currentTime === 0) return;
@@ -214,7 +220,7 @@ function updatePlaylistUI() {
         addLog(`Отмотка -15с. Текущее время: ${audioPlayer.currentTime.toFixed(1)}с`);
     }
 
-    // --- ЛОГИКА ДЕТЕКТОРА (ВОЗВРАЩЕНА ОРИГИНАЛЬНАЯ) ---
+    // --- ЛОГИКА ДЕТЕКТОРА ---
     const canvas = document.getElementById('viz');
     const ctx = canvas.getContext('2d');
     const btn = document.getElementById('startBtn');
@@ -236,7 +242,13 @@ function updatePlaylistUI() {
     const MIN_MATCHES = 3; 
 
     let audioCtx, analyser, dataArray;
-    let sigActive = false, sigStart = 0, count = 0, timer = null, lastSeen = 0, graceTimer = null;
+    let sigActive = false, sigStart = 0, graceTimer = null, lastSeen = 0;
+
+    // Переменные для кликов
+    let clickCount = 0;
+    let clickActionTimer = null;
+    let uiResetTimer = null;
+    let lastClickTime = 0;
 
     threshSlider.oninput = (e) => thrValText.textContent = e.target.value;
     promSlider.oninput = (e) => promValText.textContent = e.target.value;
@@ -253,7 +265,6 @@ function updatePlaylistUI() {
     btn.onclick = async () => {
         if (isRunning) return;
         try {
-            // ВАЖНО: Разблокировка аудио для iPhone
             audioPlayer.play().then(() => audioPlayer.pause()).catch(()=>{});
 
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -278,31 +289,67 @@ function updatePlaylistUI() {
         logEl.innerHTML = `[${time}] ${msg}<br>` + logEl.innerHTML;
     }
 
+    function resetUI() {
+        if (clickCount > 0) return; // Не сбрасываем, если серия кликов продолжается
+        statusEl.textContent = "ТИШИНА";
+        substatusEl.textContent = `Ожидание...`;
+        statusEl.style.color = '#666';
+        statusBox.style.borderLeftColor = '#444';
+    }
+
     function handleSignal(ms) {
+        const now = Date.now();
+
         if (ms > 2500) {
+            // УДЕРЖАНИЕ
             const s = (ms/1000).toFixed(1);
             statusEl.textContent = `УДЕРЖАНИЕ`;
             substatusEl.textContent = `${s} сек.`;
             statusEl.style.color = 'var(--accent-glow)';
             statusBox.style.borderLeftColor = 'var(--accent-glow)';
+            
             rewindAudio();
-            count = 0;
+            
+            clickCount = 0;
+            if (clickActionTimer) clearTimeout(clickActionTimer);
+            if (uiResetTimer) clearTimeout(uiResetTimer);
+            uiResetTimer = setTimeout(resetUI, 2500);
+
         } else {
-            count++;
-            statusEl.textContent = `КЛИК`;
-            substatusEl.textContent = `В серии: ${count}`;
+            // КОРОТКИЙ КЛИК
+            // Проверка минимальной паузы (150мс для защиты от дребезга)
+            if (now - lastClickTime < 150) {
+                return;
+            }
+            lastClickTime = now;
+            clickCount++;
+            
+            statusEl.textContent = `КЛИК (${clickCount})`;
             statusEl.style.color = 'var(--success-glow)';
             statusBox.style.borderLeftColor = 'var(--success-glow)';
-            playNextTrack();
-            
-            clearTimeout(timer);
-            timer = setTimeout(() => {
-                statusEl.textContent = "ТИШИНА";
-                substatusEl.textContent = `Ожидание...`;
-                statusEl.style.color = '#666';
-                statusBox.style.borderLeftColor = '#444';
-                count = 0;
-            }, 2500); 
+
+            if (clickActionTimer) clearTimeout(clickActionTimer);
+            if (uiResetTimer) clearTimeout(uiResetTimer);
+
+            if (clickCount >= 2) {
+                // ДВОЙНОЙ КЛИК
+                substatusEl.textContent = `Двойной клик -> Следующий трек`;
+                playNextTrack();
+                clickCount = 0; 
+                uiResetTimer = setTimeout(resetUI, 2500);
+            } else {
+                // ОДИНОЧНЫЙ КЛИК (ждем 2 секунды возможного второго клика)
+                substatusEl.textContent = `Ожидание 2-го клика (до 2с)...`;
+                
+                clickActionTimer = setTimeout(() => {
+                    if (clickCount === 1) {
+                        substatusEl.textContent = `Один клик -> Старт / Пауза`;
+                        togglePlayPause();
+                    }
+                    clickCount = 0;
+                    uiResetTimer = setTimeout(resetUI, 2500);
+                }, 2000); 
+            }
         }
     }
 
@@ -321,7 +368,6 @@ function updatePlaylistUI() {
         const freqToX = (f) => (f / maxDrawFreq) * W;
         const valToY = (val) => H - (val / 255) * H;
 
-        // Рисуем сетку гармоник
         HARMONICS.forEach(freq => {
             ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
             ctx.fillRect(freqToX(freq - TOL_OUTER), 0, freqToX(freq + TOL_OUTER) - freqToX(freq - TOL_OUTER), H);
@@ -331,7 +377,6 @@ function updatePlaylistUI() {
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'; ctx.setLineDash([2, 4]); ctx.stroke(); ctx.setLineDash([]);
         });
 
-        // Порог
         ctx.beginPath(); ctx.moveTo(0, valToY(threshold)); ctx.lineTo(W, valToY(threshold));
         ctx.strokeStyle = 'rgba(255, 82, 82, 0.3)'; ctx.stroke();
 
@@ -367,7 +412,6 @@ function updatePlaylistUI() {
                 ctx.fillStyle = 'rgba(255, 82, 82, 0.25)';
                 ctx.fillRect(freqToX(HARMONICS[j] - TOL_INNER), 0, freqToX(HARMONICS[j] + TOL_INNER) - freqToX(HARMONICS[j] - TOL_INNER), H);
             }
-            // Линии шума
             ctx.beginPath();
             ctx.moveTo(freqToX(HARMONICS[j] - TOL_OUTER), valToY(stat.noiseMax));
             ctx.lineTo(freqToX(HARMONICS[j] + TOL_OUTER), valToY(stat.noiseMax));
@@ -377,7 +421,6 @@ function updatePlaylistUI() {
         matchCountText.textContent = `${activeHits} / ${HARMONICS.length}`;
         const isPatternMatched = activeHits >= MIN_MATCHES;
 
-        // Логика сигналов
         if (isPatternMatched) {
             if (!sigActive) { sigActive = true; sigStart = now; }
             lastSeen = now;
@@ -393,7 +436,6 @@ function updatePlaylistUI() {
             }
         }
 
-        // Шкала частот
         ctx.fillStyle = '#666'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
         for (let f = 1000; f <= maxDrawFreq; f += 1000) {
             const x = freqToX(f);
@@ -402,7 +444,6 @@ function updatePlaylistUI() {
         }
     }
 
-    // Хеш при загрузке
     window.addEventListener('DOMContentLoaded', () => {
         if (window.location.hash) {
             const h = window.location.hash.substring(1);

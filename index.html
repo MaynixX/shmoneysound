@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Pro Harmonic Detector + Segment Player</title>
+    <title>Pro Harmonic Detector + Player</title>
     <style>
         :root { --bg: #0f0f12; --panel: #1a1a20; --accent: #b33939; --accent-glow: #ff5252; --success: #218c53; --success-glow: #2ecc71; --text: #eee; }
         body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; align-items: center; padding: 20px; margin: 0; }
@@ -25,7 +25,7 @@
         #startBtn.active { background: var(--accent); box-shadow: 0 0 15px rgba(255, 82, 82, 0.3); }
 
         .canvas-wrapper { position: relative; background: #000; border-radius: 12px; overflow: hidden; border: 1px solid #333; box-shadow: inset 0 0 40px rgba(0,0,0,0.8); }
-        canvas { display: block; width: 100%; height: 500px; }
+        canvas { display: block; width: 100%; height: 600px; }
 
         .live-stats { display: flex; justify-content: space-around; background: #000; border-top: 1px solid #333; padding: 10px; font-family: monospace; color: #aaa; font-size: 14px;}
         .stat-val { color: var(--success-glow); font-weight: bold; font-size: 16px; }
@@ -34,13 +34,13 @@
         .status-box { flex: 1; min-width: 200px; background: var(--panel); padding: 20px; border-radius: 12px; border-left: 6px solid #444; display: flex; flex-direction: column; justify-content: center; align-items: center; transition: 0.2s;}
         .log-box { flex: 1.5; min-width: 300px; background: var(--panel); padding: 15px; border-radius: 12px; font-family: 'Consolas', monospace; font-size: 13px; color: #888; height: 130px; overflow-y: auto; border: 1px solid #333;}
         
-        #status { font-size: 2.2rem; font-weight: 900; color: #666; text-align: center; text-transform: uppercase; line-height: 1;}
-        #substatus { font-size: 0.9rem; color: #888; margin-top: 8px; font-family: monospace;}
+        #status { font-size: 2.5rem; font-weight: 900; color: #666; text-align: center; text-transform: uppercase;}
+        #substatus { font-size: 1rem; color: #888; margin-top: 5px; }
 
         .playlist-wrapper { width: 100%; background: var(--panel); border: 1px solid #333; border-radius: 12px; margin-top: 20px; padding: 15px; box-sizing: border-box;}
-        .playlist-wrapper h3 { margin: 0 0 10px 0; font-size: 12px; color: #aaa; text-transform: uppercase; letter-spacing: 1px;}
+        .playlist-wrapper h3 { margin: 0 0 10px 0; font-size: 14px; color: #aaa; text-transform: uppercase;}
         #trackList { list-style: none; padding: 0; margin: 0; display: flex; gap: 10px; flex-wrap: wrap;}
-        #trackList li { background: #000; padding: 8px 15px; border-radius: 6px; border: 1px solid #333; font-size: 13px; color: #666; transition: 0.2s;}
+        #trackList li { background: #000; padding: 8px 15px; border-radius: 6px; border: 1px solid #333; font-size: 13px; color: #888; transition: 0.2s;}
         #trackList li.active { background: rgba(46, 204, 113, 0.15); border-color: var(--success); color: #fff; font-weight: bold; box-shadow: 0 0 10px rgba(46, 204, 113, 0.2);}
     </style>
 </head>
@@ -48,8 +48,8 @@
 
 <div class="container">
     <div class="header">
-        <h2>Строгий Детектор + Плеер (Single-File)</h2>
-        <p>Клик — след. часть | Удержание (>2.5с) — назад на 15 сек</p>
+        <h2>Строгий Детектор + Плеер</h2>
+        <p>Клик — следующий трек | Удержание (>2.5с) — назад на 15 сек</p>
     </div>
 
     <div class="project-selector">
@@ -68,7 +68,7 @@
             <input type="range" id="threshSlider" min="10" max="200" value="80">
         </div>
         <div class="group">
-            <label>Превышение шума: <span id="promVal" class="val-display">25</span>%</label>
+            <label>Превышение над макс. шумом: <span id="promVal" class="val-display">25</span>%</label>
             <input type="range" id="promSlider" min="5" max="100" value="25" step="5">
         </div>
     </div>
@@ -76,22 +76,21 @@
     <div class="canvas-wrapper">
         <canvas id="viz"></canvas>
         <div class="live-stats">
-            <div>Совпадений: <span class="stat-val" id="matchCount">0 / 9</span></div>
-            <div>Время части: <span class="stat-val" id="segmentClock">00:00</span></div>
-            <div>Статус: <span class="stat-val" id="patternStatus" style="color: #666;">IDLE</span></div>
+            <div>Совпадений пиков: <span class="stat-val" id="matchCount">0 / 9</span></div>
+            <div>Статус: <span class="stat-val" id="patternStatus" style="color: #666;">НЕ НАЙДЕН</span></div>
         </div>
     </div>
 
     <div class="display">
         <div class="status-box" id="statusBox">
             <div id="status">ТИШИНА</div>
-            <div id="substatus">ОЖИДАНИЕ...</div>
+            <div id="substatus">Ожидание...</div>
         </div>
         <div class="log-box" id="log"></div>
     </div>
 
     <div class="playlist-wrapper">
-        <h3>Разметка файла (info.txt):</h3>
+        <h3>Состав текущего файла (info.txt):</h3>
         <ul id="trackList">
             <li style="border: none; background: transparent;">Проект не выбран</li>
         </ul>
@@ -99,205 +98,281 @@
 </div>
 
 <script>
+    // --- ПЛЕЕР И СОСТОЯНИЕ ---
     const audioPlayer = new Audio();
-    let segments = [];
-    let currentSegmentIndex = -1;
+    let segments = []; 
+    let currentSegmentIndex = -1; 
     let isRunning = false;
 
-    // --- ПАРСИНГ ВРЕМЕНИ (02:35 -> 155) ---
+    const projectSelect = document.getElementById('projectSelect');
+    const trackListEl = document.getElementById('trackList');
+
+    // Помощник для парсинга времени 02:35 -> секунды
     function parseTimeToSeconds(timeStr) {
-        const parts = timeStr.trim().split(':').map(Number);
-        return parts.length === 2 ? parts[0] * 60 + parts[1] : parts[0] * 3600 + parts[1] * 60 + parts[2];
+        const p = timeStr.trim().split(':').map(Number);
+        return p.length === 2 ? p[0] * 60 + p[1] : p[0] * 3600 + p[1] * 60 + p[2];
     }
 
-    function formatTime(s) {
-        const m = Math.floor(s / 60);
-        const sec = Math.floor(s % 60);
-        return `${m}:${sec.toString().padStart(2, '0')}`;
-    }
-
-    // --- ЗАГРУЗКА И РАЗМЕТКА ---
-    async function loadProject(name) {
-        if (!name) return;
+    // Загрузка проекта через один record.mp3 и конфиг info.txt
+    async function loadProject(projectName) {
+        if (!projectName) return;
+        
         try {
-            const response = await fetch(`projects/${name}/info.txt`);
+            const response = await fetch(`/projects/${projectName}/info.txt`);
             const text = await response.text();
             
-            const lines = text.split('\n').filter(l => l.includes(' - '));
-            segments = lines.map((line) => {
-                const [title, time] = line.split(' - ');
-                return { title: title.trim(), start: parseTimeToSeconds(time) };
+            // Парсим строки вида "Первая часть - 00:00"
+            segments = text.split('\n')
+                .filter(line => line.includes(' - '))
+                .map(line => {
+                    const [name, time] = line.split(' - ');
+                    return { name: name.trim(), start: parseTimeToSeconds(time) };
+                });
+
+            trackListEl.innerHTML = '';
+            segments.forEach((seg, i) => {
+                const li = document.createElement('li');
+                li.textContent = seg.name;
+                li.id = `track-${i}`;
+                trackListEl.appendChild(li);
             });
 
-            // Конец текущего сегмента = начало следующего
-            for (let i = 0; i < segments.length; i++) {
-                segments[i].end = segments[i+1] ? segments[i+1].start : 99999;
-            }
-
-            const trackListEl = document.getElementById('trackList');
-            trackListEl.innerHTML = segments.map((s, i) => `<li id="seg-${i}">${s.title}</li>`).join('');
-            
-            audioPlayer.src = `/projects/${name}/record.mp3`;
+            audioPlayer.src = `/projects/${projectName}/record.mp3`;
             audioPlayer.load();
+            currentSegmentIndex = -1; // Сброс при новом проекте
             
-            addLog(`Проект [${name}] загружен: ${segments.length} частей.`);
-            currentSegmentIndex = 0;
+            addLog(`Загружен проект: ${projectName}. Найдено частей: ${segments.length}`);
+            window.location.hash = projectName;
         } catch (e) {
-            addLog("Ошибка загрузки: " + e.message);
+            addLog("Ошибка загрузки проекта: " + e.message);
         }
     }
 
-    // --- НАВИГАЦИЯ ---
-    function nextSegment() {
-        if (!segments.length) return;
-        currentSegmentIndex = (currentSegmentIndex + 1) % segments.length;
-        audioPlayer.currentTime = segments[currentSegmentIndex].start;
-        audioPlayer.play().catch(()=>{});
-        addLog(`>>> ${segments[currentSegmentIndex].title}`);
+    projectSelect.addEventListener('change', (e) => loadProject(e.target.value));
+
+    // Логика прыжка на следующий сегмент
+    function playNextTrack() {
+        if (segments.length === 0) {
+            addLog("Внимание: Проект не загружен!");
+            return;
+        }
+
+        currentSegmentIndex++;
+        if (currentSegmentIndex >= segments.length) currentSegmentIndex = 0;
+
+        const targetTime = segments[currentSegmentIndex].start;
+        audioPlayer.currentTime = targetTime;
+        audioPlayer.play().catch(e => addLog("Ошибка Apple Audio: " + e.message));
+
+        // UI
+        document.querySelectorAll('#trackList li').forEach(li => li.classList.remove('active'));
+        document.getElementById(`track-${currentSegmentIndex}`).classList.add('active');
+        
+        addLog(`Переход к: ${segments[currentSegmentIndex].name} (${targetTime}s)`);
     }
 
     function rewindAudio() {
+        if (audioPlayer.paused && audioPlayer.currentTime === 0) return;
         audioPlayer.currentTime = Math.max(0, audioPlayer.currentTime - 15);
-        addLog(`<<< Перемотка -15с`);
+        addLog(`Отмотка -15с. Текущее время: ${audioPlayer.currentTime.toFixed(1)}с`);
     }
 
-    // --- АНАЛИЗАТОР И ДЕТЕКТОР ---
+    // --- ЛОГИКА ДЕТЕКТОРА (ВОЗВРАЩЕНА ОРИГИНАЛЬНАЯ) ---
     const canvas = document.getElementById('viz');
     const ctx = canvas.getContext('2d');
     const btn = document.getElementById('startBtn');
-    const logEl = document.getElementById('log');
     const statusEl = document.getElementById('status');
     const substatusEl = document.getElementById('substatus');
     const statusBox = document.getElementById('statusBox');
+    const logEl = document.getElementById('log');
+    
+    const threshSlider = document.getElementById('threshSlider');
+    const promSlider = document.getElementById('promSlider');
+    const thrValText = document.getElementById('thrVal');
+    const promValText = document.getElementById('promVal');
+    const matchCountText = document.getElementById('matchCount');
 
     const BASE_FREQ = 694.4;
     const HARMONICS = [BASE_FREQ, BASE_FREQ*2, BASE_FREQ*3, BASE_FREQ*4, BASE_FREQ*5, BASE_FREQ*6, BASE_FREQ*7, BASE_FREQ*8, BASE_FREQ*9];
-    const TOL_INNER = 40, TOL_OUTER = 100, MIN_MATCHES = 3;
+    const TOL_INNER = 40;  
+    const TOL_OUTER = 100; 
+    const MIN_MATCHES = 3; 
 
     let audioCtx, analyser, dataArray;
-    let sigActive = false, sigStart = 0, lastSeen = 0, graceTimer = null;
+    let sigActive = false, sigStart = 0, count = 0, timer = null, lastSeen = 0, graceTimer = null;
+
+    threshSlider.oninput = (e) => thrValText.textContent = e.target.value;
+    promSlider.oninput = (e) => promValText.textContent = e.target.value;
+
+    function resize() {
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = canvas.clientWidth * dpr;
+        canvas.height = canvas.clientHeight * dpr;
+        ctx.scale(dpr, dpr);
+    }
+    window.addEventListener('resize', resize);
+    resize();
 
     btn.onclick = async () => {
         if (isRunning) return;
         try {
-            // Разблокировка звука для Apple
-            audioPlayer.play().then(() => audioPlayer.pause());
+            // ВАЖНО: Разблокировка аудио для iPhone
+            audioPlayer.play().then(() => audioPlayer.pause()).catch(()=>{});
 
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 8192;
+            analyser.fftSize = 8192; 
+            analyser.smoothingTimeConstant = 0.75; 
             const source = audioCtx.createMediaStreamSource(stream);
             source.connect(analyser);
             dataArray = new Uint8Array(analyser.frequencyBinCount);
             
-            isRunning = true;
-            btn.textContent = "СИСТЕМА АКТИВНА";
+            btn.textContent = "РАБОТАЕТ (МИКРОФОН ВКЛ)";
             btn.classList.add('active');
-            addLog("Микрофон подключен. Детектор запущен.");
-            render();
-        } catch (e) { alert("Доступ к микрофону отклонен."); }
+            isRunning = true;
+            addLog("Детектор запущен.");
+            render(); 
+        } catch (e) { alert("Ошибка микрофона: " + e.message); }
     };
 
-    function handleSignal(dur) {
-        if (dur > 2500) {
-            statusEl.textContent = "УДЕРЖАНИЕ";
+    function addLog(msg) {
+        const time = new Date().toLocaleTimeString('ru-RU');
+        logEl.innerHTML = `[${time}] ${msg}<br>` + logEl.innerHTML;
+    }
+
+    function handleSignal(ms) {
+        if (ms > 2500) {
+            const s = (ms/1000).toFixed(1);
+            statusEl.textContent = `УДЕРЖАНИЕ`;
+            substatusEl.textContent = `${s} сек.`;
             statusEl.style.color = 'var(--accent-glow)';
             statusBox.style.borderLeftColor = 'var(--accent-glow)';
             rewindAudio();
+            count = 0;
         } else {
-            statusEl.textContent = "КЛИК";
+            count++;
+            statusEl.textContent = `КЛИК`;
+            substatusEl.textContent = `В серии: ${count}`;
             statusEl.style.color = 'var(--success-glow)';
             statusBox.style.borderLeftColor = 'var(--success-glow)';
-            nextSegment();
+            playNextTrack();
+            
+            clearTimeout(timer);
+            timer = setTimeout(() => {
+                statusEl.textContent = "ТИШИНА";
+                substatusEl.textContent = `Ожидание...`;
+                statusEl.style.color = '#666';
+                statusBox.style.borderLeftColor = '#444';
+                count = 0;
+            }, 2500); 
         }
-        setTimeout(() => {
-            statusEl.textContent = "ТИШИНА";
-            statusEl.style.color = '#666';
-            statusBox.style.borderLeftColor = '#444';
-        }, 2000);
-    }
-
-    function addLog(msg) {
-        const time = new Date().toLocaleTimeString();
-        logEl.innerHTML = `[${time}] ${msg}<br>` + logEl.innerHTML;
     }
 
     function render() {
         requestAnimationFrame(render);
         if (!isRunning) return;
 
-        const now = Date.now();
-        analyser.getByteFrequencyData(dataArray);
-        
-        // Обновление UI плеера
-        const ct = audioPlayer.currentTime;
-        const segIdx = segments.findIndex(s => ct >= s.start && ct < s.end);
-        if (segIdx !== -1) {
-            if (segIdx !== currentSegmentIndex) {
-                currentSegmentIndex = segIdx;
-                document.querySelectorAll('#trackList li').forEach(li => li.classList.remove('active'));
-                document.getElementById(`seg-${segIdx}`).classList.add('active');
-            }
-            substatusEl.textContent = segments[segIdx].title.toUpperCase();
-            document.getElementById('segmentClock').textContent = formatTime(ct - segments[segIdx].start);
-        }
-
-        // Отрисовка Канваса
-        const W = canvas.width = canvas.clientWidth;
-        const H = canvas.height = canvas.clientHeight;
-        const threshold = parseInt(document.getElementById('threshSlider').value);
-        const promRatio = 1 + (parseInt(document.getElementById('promSlider').value) / 100);
+        const now = Date.now(); 
+        const W = canvas.clientWidth, H = canvas.clientHeight;
+        const rate = audioCtx.sampleRate;
+        const maxDrawFreq = 8000; 
+        const threshold = parseInt(threshSlider.value);
+        const prominenceRatio = 1 + (parseInt(promSlider.value) / 100); 
         
         ctx.clearRect(0, 0, W, H);
-        const freqToX = (f) => (f / 8000) * W;
-        const valToY = (v) => H - (v / 255) * H;
+        const freqToX = (f) => (f / maxDrawFreq) * W;
+        const valToY = (val) => H - (val / 255) * H;
 
-        // Сетка гармоник
-        HARMONICS.forEach(f => {
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.05)';
-            ctx.fillRect(freqToX(f - TOL_INNER), 0, freqToX(f + TOL_INNER) - freqToX(f - TOL_INNER), H);
+        // Рисуем сетку гармоник
+        HARMONICS.forEach(freq => {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.03)';
+            ctx.fillRect(freqToX(freq - TOL_OUTER), 0, freqToX(freq + TOL_OUTER) - freqToX(freq - TOL_OUTER), H);
+            ctx.fillStyle = 'rgba(0, 229, 255, 0.05)';
+            ctx.fillRect(freqToX(freq - TOL_INNER), 0, freqToX(freq + TOL_INNER) - freqToX(freq - TOL_INNER), H);
+            ctx.beginPath(); ctx.moveTo(freqToX(freq), 0); ctx.lineTo(freqToX(freq), H);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)'; ctx.setLineDash([2, 4]); ctx.stroke(); ctx.setLineDash([]);
         });
 
-        // Спектрограмма
-        ctx.beginPath();
-        ctx.strokeStyle = '#00e5ff';
-        const hzPerBin = audioCtx.sampleRate / (dataArray.length * 2);
-        let activeHits = 0;
+        // Порог
+        ctx.beginPath(); ctx.moveTo(0, valToY(threshold)); ctx.lineTo(W, valToY(threshold));
+        ctx.strokeStyle = 'rgba(255, 82, 82, 0.3)'; ctx.stroke();
 
+        analyser.getByteFrequencyData(dataArray);
+        const hzPerBin = rate / (dataArray.length * 2);
+        let hStats = HARMONICS.map(() => ({ peakMax: 0, noiseMax: 0 }));
+
+        ctx.beginPath(); ctx.moveTo(0, H);
         for (let i = 0; i < dataArray.length; i++) {
+            const val = dataArray[i];
             const f = i * hzPerBin;
-            if (f > 8000) break;
-            const x = freqToX(f);
-            const y = valToY(dataArray[i]);
-            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+            if (f > maxDrawFreq) break; 
+            ctx.lineTo(freqToX(f), valToY(val));
 
-            // Детекция пиков в зонах гармоник
-            HARMONICS.forEach(h => {
-                if (f > h - 10 && f < h + 10 && dataArray[i] > threshold) {
-                    activeHits++;
+            for (let j = 0; j < HARMONICS.length; j++) {
+                const hF = HARMONICS[j];
+                if (f >= hF - TOL_OUTER && f <= hF + TOL_OUTER) {
+                    if (f >= hF - TOL_INNER && f <= hF + TOL_INNER) {
+                        if (val > hStats[j].peakMax) hStats[j].peakMax = val;
+                    } else {
+                        if (val > hStats[j].noiseMax) hStats[j].noiseMax = val;
+                    }
                 }
-            });
+            }
         }
-        ctx.stroke();
+        ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 2; ctx.stroke();
 
-        document.getElementById('matchCount').textContent = `${activeHits} / 9`;
+        let activeHits = 0;
+        for (let j = 0; j < HARMONICS.length; j++) {
+            const stat = hStats[j];
+            if (stat.peakMax > threshold && stat.peakMax > (stat.noiseMax * prominenceRatio)) {
+                activeHits++;
+                ctx.fillStyle = 'rgba(255, 82, 82, 0.25)';
+                ctx.fillRect(freqToX(HARMONICS[j] - TOL_INNER), 0, freqToX(HARMONICS[j] + TOL_INNER) - freqToX(HARMONICS[j] - TOL_INNER), H);
+            }
+            // Линии шума
+            ctx.beginPath();
+            ctx.moveTo(freqToX(HARMONICS[j] - TOL_OUTER), valToY(stat.noiseMax));
+            ctx.lineTo(freqToX(HARMONICS[j] + TOL_OUTER), valToY(stat.noiseMax));
+            ctx.strokeStyle = '#f39c12'; ctx.lineWidth = 1; ctx.stroke();
+        }
 
-        // Логика сигналов (клик/удержание)
-        if (activeHits >= MIN_MATCHES) {
+        matchCountText.textContent = `${activeHits} / ${HARMONICS.length}`;
+        const isPatternMatched = activeHits >= MIN_MATCHES;
+
+        // Логика сигналов
+        if (isPatternMatched) {
             if (!sigActive) { sigActive = true; sigStart = now; }
             lastSeen = now;
+            if (graceTimer) { clearTimeout(graceTimer); graceTimer = null; }
         } else {
-            if (sigActive && (now - lastSeen > 100)) {
-                handleSignal(lastSeen - sigStart);
-                sigActive = false;
+            if (sigActive && !graceTimer) {
+                graceTimer = setTimeout(() => {
+                    const dur = lastSeen - sigStart;
+                    if (dur >= 10) handleSignal(dur);
+                    sigActive = false;
+                    graceTimer = null;
+                }, 100); 
             }
+        }
+
+        // Шкала частот
+        ctx.fillStyle = '#666'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+        for (let f = 1000; f <= maxDrawFreq; f += 1000) {
+            const x = freqToX(f);
+            ctx.fillText((f/1000) + 'k', x, H - 10);
+            ctx.fillStyle = '#333'; ctx.fillRect(x, 0, 1, H); ctx.fillStyle = '#666';
         }
     }
 
-    document.getElementById('projectSelect').onchange = (e) => loadProject(e.target.value);
-    document.getElementById('threshSlider').oninput = (e) => document.getElementById('thrVal').textContent = e.target.value;
-    document.getElementById('promSlider').oninput = (e) => document.getElementById('promVal').textContent = e.target.value;
+    // Хеш при загрузке
+    window.addEventListener('DOMContentLoaded', () => {
+        if (window.location.hash) {
+            const h = window.location.hash.substring(1);
+            loadProject(h);
+            projectSelect.value = h;
+        }
+    });
 </script>
 </body>
 </html>

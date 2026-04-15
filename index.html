@@ -49,7 +49,7 @@
 <div class="container">
     <div class="header">
         <h2>Строгий Детектор + Плеер</h2>
-        <p>1 клик — пауза/старт | 2 клика — следующий трек | Удержание (>2.5с) — назад на 15 сек</p>
+        <p>Короткий сигнал (<2.5с) — следующий трек | Удержание (>2.5с) — назад на 15 сек</p>
     </div>
 
     <div class="project-selector">
@@ -166,24 +166,6 @@
 
     projectSelect.addEventListener('change', (e) => loadProject(e.target.value));
 
-    function togglePlayPause() {
-        if (!audioPlayer.src) return;
-        
-        if (audioPlayer.paused) {
-            // Если трек не был запущен, выбираем первый
-            if (currentSegmentIndex === -1 && segments.length > 0) {
-                currentSegmentIndex = 0;
-                audioPlayer.currentTime = segments[0].start;
-                updatePlaylistUI();
-            }
-            audioPlayer.play().catch(e => console.log("Ждем взаимодействия: " + e.message));
-            addLog("▶ Воспроизведение (Один клик)");
-        } else {
-            audioPlayer.pause();
-            addLog("⏸ Пауза (Один клик)");
-        }
-    }
-
     function playNextTrack() {
         if (segments.length === 0) return;
 
@@ -243,12 +225,7 @@
 
     let audioCtx, analyser, dataArray;
     let sigActive = false, sigStart = 0, graceTimer = null, lastSeen = 0;
-
-    // Переменные для кликов
-    let clickCount = 0;
-    let clickActionTimer = null;
     let uiResetTimer = null;
-    let lastClickTime = 0;
 
     threshSlider.oninput = (e) => thrValText.textContent = e.target.value;
     promSlider.oninput = (e) => promValText.textContent = e.target.value;
@@ -290,7 +267,6 @@
     }
 
     function resetUI() {
-        if (clickCount > 0) return; // Не сбрасываем, если серия кликов продолжается
         statusEl.textContent = "ТИШИНА";
         substatusEl.textContent = `Ожидание...`;
         statusEl.style.color = '#666';
@@ -298,59 +274,29 @@
     }
 
     function handleSignal(ms) {
-        const now = Date.now();
+        if (uiResetTimer) clearTimeout(uiResetTimer);
 
-        if (ms > 2500) {
-            // УДЕРЖАНИЕ
+        if (ms >= 2500) {
+            // УДЕРЖАНИЕ (>= 2.5с)
             const s = (ms/1000).toFixed(1);
             statusEl.textContent = `УДЕРЖАНИЕ`;
-            substatusEl.textContent = `${s} сек.`;
+            substatusEl.textContent = `${s} сек. -> Отмотка назад`;
             statusEl.style.color = 'var(--accent-glow)';
             statusBox.style.borderLeftColor = 'var(--accent-glow)';
             
             rewindAudio();
-            
-            clickCount = 0;
-            if (clickActionTimer) clearTimeout(clickActionTimer);
-            if (uiResetTimer) clearTimeout(uiResetTimer);
-            uiResetTimer = setTimeout(resetUI, 2500);
-
         } else {
-            // КОРОТКИЙ КЛИК
-            // Проверка минимальной паузы (150мс для защиты от дребезга)
-            if (now - lastClickTime < 150) {
-                return;
-            }
-            lastClickTime = now;
-            clickCount++;
-            
-            statusEl.textContent = `КЛИК (${clickCount})`;
+            // КОРОТКИЙ СИГНАЛ (< 2.5с)
+            statusEl.textContent = `СИГНАЛ`;
+            substatusEl.textContent = `Менее 2.5с -> Следующий трек`;
             statusEl.style.color = 'var(--success-glow)';
             statusBox.style.borderLeftColor = 'var(--success-glow)';
-
-            if (clickActionTimer) clearTimeout(clickActionTimer);
-            if (uiResetTimer) clearTimeout(uiResetTimer);
-
-            if (clickCount >= 2) {
-                // ДВОЙНОЙ КЛИК
-                substatusEl.textContent = `Двойной клик -> Следующий трек`;
-                playNextTrack();
-                clickCount = 0; 
-                uiResetTimer = setTimeout(resetUI, 2500);
-            } else {
-                // ОДИНОЧНЫЙ КЛИК (ждем 2 секунды возможного второго клика)
-                // substatusEl.textContent = `Ожидание 2-го клика (до 2с)...`;
-                
-                // clickActionTimer = setTimeout(() => {
-                //     if (clickCount === 1) {
-                //         substatusEl.textContent = `Один клик -> Старт / Пауза`;
-                //         togglePlayPause();
-                //     }
-                //     clickCount = 0;
-                //     uiResetTimer = setTimeout(resetUI, 2500);
-                // }, 1000); 
-            }
+            
+            playNextTrack();
         }
+
+        // Возврат интерфейса в дефолтное состояние через 2.5 секунды
+        uiResetTimer = setTimeout(resetUI, 2500);
     }
 
     function render() {

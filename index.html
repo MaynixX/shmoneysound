@@ -172,28 +172,31 @@ async function loadProject(projectName) {
 
     // Логика прыжка на следующий сегмент
     function playNextTrack() {
-    if (segments.length === 0) {
-        addLog("Внимание: Проект не загружен!");
-        return;
-    }
+    if (segments.length === 0) return;
 
     const currentTime = audioPlayer.currentTime;
     
-    // Находим индекс сегмента, который идет сразу после текущего времени
-    let nextIndex = segments.findIndex(seg => seg.start > currentTime + 0.5);
+    // Если плеер на самом начале и еще не запущен (или в пределах 1-й секунды)
+    // и мы еще ничего не выбирали (currentSegmentIndex === -1), 
+    // то просто включаем первый трек.
+    if (currentTime < 1 && currentSegmentIndex === -1) {
+        currentSegmentIndex = 0;
+    } else {
+        // Иначе ищем следующий сегмент
+        let nextIndex = segments.findIndex(seg => seg.start > (currentTime + 1.5));
 
-    // Если мы в самом конце или ничего не нашли — идем на начало (0)
-    if (nextIndex === -1) {
-        nextIndex = 0;
+        if (nextIndex === -1) {
+            nextIndex = 0; // Зацикливаем на начало
+        }
+        currentSegmentIndex = nextIndex;
     }
 
-    currentSegmentIndex = nextIndex;
     const targetTime = segments[currentSegmentIndex].start;
-    
     audioPlayer.currentTime = targetTime;
-    audioPlayer.play().catch(e => addLog("Ошибка Audio: " + e.message));
+    
+    // Важно: играем только после того, как установили время
+    audioPlayer.play().catch(e => console.log("Ждем взаимодействия: " + e.message));
 
-    // Обновление UI
     updatePlaylistUI();
     addLog(`Переход к: ${segments[currentSegmentIndex].name} (${targetTime}s)`);
 }
